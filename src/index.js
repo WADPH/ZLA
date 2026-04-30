@@ -1,0 +1,34 @@
+require('dotenv').config();
+
+const express = require('express');
+const { adapter } = require('./bot');
+const zammadRouter = require('./routes/zammad');
+const approveRouter = require('./routes/approve');
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+app.use(express.json());
+
+app.get('/health', (_req, res) => {
+  res.json({ status: 'ok' });
+});
+
+app.post('/api/messages', (req, res) => {
+  adapter.process(req, res, async (context) => {
+    const bot = require('./bot').bot;
+    await bot.run(context);
+  });
+});
+
+app.use('/api/zammad', zammadRouter);
+app.use('/api/approve', approveRouter);
+
+app.use((err, _req, res, _next) => {
+  console.error('[ERROR] Unhandled error:', err.message);
+  res.status(500).json({ error: 'Internal server error' });
+});
+
+app.listen(port, () => {
+  console.log(`[START] ZLA backend listening on port ${port}`);
+});

@@ -1,0 +1,184 @@
+# ZLA Backend (Zammad LAPS Automation)
+
+Node.js backend service that automates Admin Privilege approvals from Zammad through Microsoft Teams and Microsoft Graph LAPS.
+
+## Features
+
+- Receives Zammad webhook on ticket creation (`Admin Privilege` flow)
+- Extracts `PC-#####` tag from ticket body when needed
+- Sends Teams Adaptive Card with `Approve` button
+- Handles `Approve` action via Bot Framework endpoint
+- Calls Microsoft Graph API to get LAPS password
+- Sends result back to Zammad as internal article
+- Closes Zammad ticket
+- Logs all key steps with success/failure and reason
+
+## Project Structure
+
+```txt
+src/
+  index.js
+  bot.js
+  routes/
+    zammad.js
+    approve.js
+  services/
+    graph.js
+    zammad.js
+    teams.js
+  utils/
+    auth.js
+.env
+.env.example
+package.json
+Dockerfile
+docker-compose.yml
+README.md
+```
+
+## Environment Setup
+
+1. Copy `.env.example` to `.env`.
+2. Fill all values.
+
+```env
+# Microsoft Entra ID / Bot
+MICROSOFT_APP_ID=
+MICROSOFT_APP_PASSWORD=
+TENANT_ID=
+
+# Zammad
+ZAMMAD_URL=
+ZAMMAD_TOKEN=
+
+# Teams
+TEAMS_SERVICE_URL=
+TEAMS_CONVERSATION_ID=
+
+# App
+PORT=3000
+BASE_URL=
+```
+
+## Run Locally
+
+```bash
+npm install
+npm start
+```
+
+Service starts on `http://localhost:3000`.
+
+Health check:
+
+```bash
+curl http://localhost:3000/health
+```
+
+## Run with Docker
+
+```bash
+docker-compose up --build
+```
+
+## API Endpoints
+
+### 1) Zammad Webhook
+
+`POST /api/zammad`
+
+Payload:
+
+```json
+{
+  "ticket_id": 123,
+  "customer": "John Doe",
+  "body": "Need admin access",
+  "pc_tag": "PC-001"
+}
+```
+
+Notes:
+
+- If `pc_tag` is missing, service tries to extract from body using regex: `PC-\d{5}`
+- Example text supported:
+
+```txt
+My Laptop ID on the back cover of the laptop (with QR): PC-00036
+Requesting temporary administrator access on my laptop for vs code re-installation.
+```
+
+### 2) Bot Framework Endpoint
+
+`POST /api/messages`
+
+- Used by Microsoft Bot Framework.
+- Processes `Action.Submit`.
+- If `action = approve`, runs approve flow.
+
+### 3) Manual Approve Trigger (optional)
+
+`POST /api/approve`
+
+Payload:
+
+```json
+{
+  "ticket_id": 123,
+  "pc_tag": "PC-00036",
+  "approved_by": "Admin User"
+}
+```
+
+## Bot Registration (Microsoft)
+
+1. Register app in Microsoft Entra ID.
+2. Create Bot Channels Registration (or Azure Bot resource).
+3. Set messaging endpoint:
+
+```txt
+https://<YOUR_PUBLIC_HOST>/api/messages
+```
+
+4. Put Bot App ID and Password into `.env` (the same credentials are used for Bot Framework and Graph API calls).
+5. Set correct Teams conversation values (`TEAMS_SERVICE_URL`, `TEAMS_CONVERSATION_ID`) for proactive card delivery.
+
+## Zammad Webhook Example
+
+Create a webhook in Zammad that sends ticket data to:
+
+```txt
+https://<YOUR_PUBLIC_HOST>/api/zammad
+```
+
+Example body:
+
+```json
+{
+  "ticket_id": "#{ticket.id}",
+  "customer": "#{ticket.customer.fullname}",
+  "body": "#{article.body}"
+}
+```
+
+## Logging
+
+Terminal logs include:
+
+- Webhook received
+- PC tag extraction status
+- Graph token request result
+- Managed device lookup result
+- LAPS password request result
+- Zammad article creation result
+- Ticket close result
+- Failure reason when any step fails
+
+## Important Graph API Calls
+
+- Token:
+  - `POST https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token`
+- Find device:
+  - `GET /deviceManagement/managedDevices?$filter=deviceName eq '{pc_tag}'`
+- Get LAPS:
+  - `POST /deviceManagement/managedDevices/{id}/getLapsPassword`
