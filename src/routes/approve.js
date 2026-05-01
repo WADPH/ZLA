@@ -1,6 +1,6 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
-const { getGraphAccessToken, findManagedDeviceByTag, getLapsPassword } = require('../services/graph');
+const { findManagedDeviceAcrossTenants, getLapsPassword } = require('../services/graph');
 const { createTicketArticle, closeTicket } = require('../services/zammad');
 
 const router = express.Router();
@@ -46,20 +46,25 @@ async function handleApproveAction({ ticketId, pcTag, approvedBy }) {
       throw new Error('ticketId or pcTag is missing');
     }
 
-    console.log(`[APPROVE][${requestId}] Step 1/6: requesting Graph token`);
-    const accessToken = await getGraphAccessToken();
-    console.log(`[APPROVE][${requestId}] Success: Graph token received`);
-
-    console.log(`[APPROVE][${requestId}] Step 2/6: searching managed device by tag=${pcTag}`);
-    const device = await findManagedDeviceByTag(accessToken, pcTag);
+    console.log(`[APPROVE][${requestId}] Step 1/6: scanning configured tenants for device ${pcTag}`);
+    const match = await findManagedDeviceAcrossTenants(pcTag);
+    let accessToken = null;
+    let device = null;
+    let resolvedTenantKey = null;
+    if (match) {
+      resolvedTenantKey = match.tenantKey;
+      accessToken = match.accessToken;
+      device = match.device;
+      console.log(`[APPROVE][${requestId}] Success: matched tenant=${resolvedTenantKey}`);
+    }
 
     if (!device) {
-      throw new Error(`No managed device found for tag ${pcTag}`);
+      throw new Error(`No managed device found for tag ${pcTag} in configured tenants`);
     }
 
     const aadDeviceId = device.azureADDeviceId || device.azureActiveDirectoryDeviceId || null;
     console.log(
-      `[APPROVE][${requestId}] Success: device found id=${device.id}, aad_device_id=${aadDeviceId || 'n/a'}`
+      `[APPROVE][${requestId}] Success: device found id=${device.id}, aad_device_id=${aadDeviceId || 'n/a'}, tenant=${resolvedTenantKey}`
     );
 
     console.log(`[APPROVE][${requestId}] Step 3/6: requesting LAPS password`);

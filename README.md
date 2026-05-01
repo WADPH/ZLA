@@ -42,10 +42,23 @@ README.md
 2. Fill all values.
 
 ```env
-# Microsoft Entra ID / Bot
+# Single-tenant fallback
 MICROSOFT_APP_ID=
 MICROSOFT_APP_PASSWORD=
 TENANT_ID=
+
+# Multi-tenant mode
+# Example: TENANTS=FIRST,SECOND,THIRD
+TENANTS=
+FIRST_APP_ID=
+FIRST_APP_PASSWORD=
+FIRST_TENANT_ID=
+SECOND_APP_ID=
+SECOND_APP_PASSWORD=
+SECOND_TENANT_ID=
+THIRD_APP_ID=
+THIRD_APP_PASSWORD=
+THIRD_TENANT_ID=
 
 # Zammad
 ZAMMAD_URL=
@@ -59,6 +72,8 @@ TEAMS_CONVERSATION_ID=
 PORT=3000
 BASE_URL=
 ```
+
+If `TENANTS` is set, ZLA scans tenants in listed order and uses the first tenant where the device is found.
 
 ## Run Locally
 

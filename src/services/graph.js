@@ -3,10 +3,41 @@ const { requireEnv } = require('../utils/auth');
 
 const GRAPH_BASE_URL = 'https://graph.microsoft.com/v1.0';
 
-async function getGraphAccessToken() {
-  const tenantId = requireEnv('TENANT_ID');
-  const clientId = requireEnv('MICROSOFT_APP_ID');
-  const clientSecret = requireEnv('MICROSOFT_APP_PASSWORD');
+function getTenantKeys() {
+  const raw = process.env.TENANTS || '';
+  const keys = raw
+    .split(',')
+    .map((item) => item.trim().toUpperCase())
+    .filter(Boolean);
+
+  return keys.length > 0 ? keys : ['DEFAULT'];
+}
+
+function getTenantConfig(tenantKey) {
+  const key = (tenantKey || 'DEFAULT').toUpperCase();
+
+  if (key === 'DEFAULT') {
+    return {
+      tenantKey: 'DEFAULT',
+      tenantId: requireEnv('TENANT_ID'),
+      clientId: requireEnv('MICROSOFT_APP_ID'),
+      clientSecret: requireEnv('MICROSOFT_APP_PASSWORD')
+    };
+  }
+
+  return {
+    tenantKey: key,
+    tenantId: requireEnv(`${key}_TENANT_ID`),
+    clientId: requireEnv(`${key}_APP_ID`),
+    clientSecret: requireEnv(`${key}_APP_PASSWORD`)
+  };
+}
+
+async function getGraphAccessToken(tenantKey = 'DEFAULT') {
+  const config = getTenantConfig(tenantKey);
+  const tenantId = config.tenantId;
+  const clientId = config.clientId;
+  const clientSecret = config.clientSecret;
 
   const tokenUrl = `https://login.microsoftonline.com/${tenantId}/oauth2/v2.0/token`;
 
@@ -35,6 +66,29 @@ async function findManagedDeviceByTag(accessToken, pcTag) {
   });
 
   return response.data.value?.[0] || null;
+}
+
+async function findManagedDeviceAcrossTenants(pcTag) {
+  const tenantKeys = getTenantKeys();
+
+  for (const tenantKey of tenantKeys) {
+    try {
+      const token = await getGraphAccessToken(tenantKey);
+      const device = await findManagedDeviceByTag(token, pcTag);
+
+      if (device) {
+        return {
+          tenantKey,
+          accessToken: token,
+          device
+        };
+      }
+    } catch (error) {
+      console.error(`[GRAPH] Tenant ${tenantKey}: device lookup failed: ${error.message}`);
+    }
+  }
+
+  return null;
 }
 
 async function getManagedDevicePrimaryUserEmail(accessToken, managedDeviceId) {
@@ -101,8 +155,11 @@ async function getLapsPassword(accessToken, deviceLocalCredentialId, pcTag) {
 }
 
 module.exports = {
+  getTenantKeys,
+  getTenantConfig,
   getGraphAccessToken,
   findManagedDeviceByTag,
+  findManagedDeviceAcrossTenants,
   getManagedDevicePrimaryUserEmail,
   getLapsPassword
 };

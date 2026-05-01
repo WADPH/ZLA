@@ -1,7 +1,7 @@
 const express = require('express');
 const { sendApprovalCard } = require('../services/teams');
 const { extractPcTag } = require('../utils/auth');
-const { getGraphAccessToken, findManagedDeviceByTag } = require('../services/graph');
+const { findManagedDeviceAcrossTenants } = require('../services/graph');
 const { getTicketById, getUserById } = require('../services/zammad');
 
 const router = express.Router();
@@ -34,6 +34,7 @@ router.post('/', async (req, res) => {
     let customerEmail = (customerEmailRaw || '').trim().toLowerCase() || null;
     let primaryUserEmail = null;
     let mismatchWarning = null;
+    let matchedTenantKey = null;
 
     console.log(`[ZAMMAD] Compare step: customer email from webhook=${customerEmail || 'n/a'}`);
 
@@ -55,17 +56,17 @@ router.post('/', async (req, res) => {
     }
 
     try {
-      const graphToken = await getGraphAccessToken();
-      const managedDevice = await findManagedDeviceByTag(graphToken, pcTag);
-
-      if (managedDevice?.id) {
-        primaryUserEmail = (
-          managedDevice.userPrincipalName ||
-          managedDevice.emailAddress ||
-          ''
-        ).trim().toLowerCase() || null;
+      console.log(`[ZAMMAD] Tenant scan: searching device ${pcTag} across configured tenants`);
+      const match = await findManagedDeviceAcrossTenants(pcTag);
+      if (!match) {
+        throw new Error(`Device ${pcTag} not found in any configured tenant`);
       }
 
+      matchedTenantKey = match.tenantKey;
+      const managedDevice = match.device;
+      console.log(`[ZAMMAD] Tenant scan result: matched tenant=${matchedTenantKey}, device_id=${managedDevice.id}`);
+
+      primaryUserEmail = (managedDevice.userPrincipalName || managedDevice.emailAddress || '').trim().toLowerCase() || null;
       console.log(`[ZAMMAD] Compare step: primary user email from Graph=${primaryUserEmail || 'n/a'}`);
     } catch (compareError) {
       console.error(`[ZAMMAD] Compare step failed: ${compareError.message}`);
