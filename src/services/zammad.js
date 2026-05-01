@@ -14,13 +14,13 @@ function getClient() {
   });
 }
 
-async function createTicketArticle(ticketId, body, internal = true) {
+async function createTicketArticle(ticketId, body, internal = false) {
   const client = getClient();
 
   await client.post('/api/v1/ticket_articles', {
     ticket_id: Number(ticketId),
     body,
-    type: 'note',
+    type: 'phone',
     internal,
     subject: 'ZLA LAPS Result'
   });

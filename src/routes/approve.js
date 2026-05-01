@@ -89,7 +89,7 @@ async function handleApproveAction({ ticketId, pcTag, approvedBy }) {
     ].join('\n');
 
     console.log(`[APPROVE][${requestId}] Step 4/6: sending article to Zammad`);
-    await createTicketArticle(ticketId, articleBody, true);
+    await createTicketArticle(ticketId, articleBody, false);
     console.log(`[APPROVE][${requestId}] Success: article created in Zammad`);
 
     console.log(`[APPROVE][${requestId}] Step 5/6: closing Zammad ticket`);

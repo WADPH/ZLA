@@ -57,8 +57,9 @@ class ZlaBot extends ActivityHandler {
 
 function getConversationReference() {
   const serviceUrl = requireEnv('TEAMS_SERVICE_URL');
-  const conversationId = requireEnv('TEAMS_CONVERSATION_ID');
+  const rawConversationId = requireEnv('TEAMS_CONVERSATION_ID');
   const appId = requireEnv('MICROSOFT_APP_ID');
+  const conversationId = rawConversationId.split(';messageid=')[0];
 
   return {
     serviceUrl,

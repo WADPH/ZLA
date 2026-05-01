@@ -1,6 +1,10 @@
 const { sendCardToTeams } = require('../bot');
+const { requireEnv } = require('../utils/auth');
 
 function buildApprovalCard({ ticketId, customer, reason, pcTag }) {
+  const zammadUrl = requireEnv('ZAMMAD_URL').replace(/\/+$/, '');
+  const openTicketUrl = `${zammadUrl}/#ticket/zoom/${ticketId}`;
+
   return {
     type: 'AdaptiveCard',
     version: '1.4',
@@ -30,6 +34,11 @@ function buildApprovalCard({ ticketId, customer, reason, pcTag }) {
           ticket_id: String(ticketId),
           pc_tag: pcTag
         }
+      },
+      {
+        type: 'Action.OpenUrl',
+        title: 'Open Ticket',
+        url: openTicketUrl
       }
     ]
   };
