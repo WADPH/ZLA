@@ -1,7 +1,7 @@
 const { sendCardToTeams } = require('../bot');
 const { requireEnv } = require('../utils/auth');
 
-function buildApprovalCard({ ticketId, customer, reason, pcTag }) {
+function buildApprovalCard({ ticketId, customer, customerEmail, reason, pcTag, mismatchWarning }) {
   const zammadUrl = requireEnv('ZAMMAD_URL').replace(/\/+$/, '');
   const openTicketUrl = `${zammadUrl}/#ticket/zoom/${ticketId}`;
 
@@ -20,10 +20,22 @@ function buildApprovalCard({ ticketId, customer, reason, pcTag }) {
         type: 'FactSet',
         facts: [
           { title: 'User', value: customer || 'Unknown' },
+          { title: 'Email', value: customerEmail || 'Not provided' },
           { title: 'Reason', value: reason || 'No reason provided' },
           { title: 'PC Tag', value: pcTag || 'Not found' }
         ]
-      }
+      },
+      ...(mismatchWarning
+        ? [
+            {
+              type: 'TextBlock',
+              text: mismatchWarning,
+              wrap: true,
+              color: 'Attention',
+              spacing: 'Medium'
+            }
+          ]
+        : [])
     ],
     actions: [
       {

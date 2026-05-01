@@ -34,7 +34,23 @@ async function closeTicket(ticketId) {
   });
 }
 
+async function getTicketById(ticketId, expand = true) {
+  const client = getClient();
+  const response = await client.get(`/api/v1/tickets/${ticketId}`, {
+    params: { expand }
+  });
+  return response.data;
+}
+
+async function getUserById(userId) {
+  const client = getClient();
+  const response = await client.get(`/api/v1/users/${userId}`);
+  return response.data;
+}
+
 module.exports = {
   createTicketArticle,
-  closeTicket
+  closeTicket,
+  getTicketById,
+  getUserById
 };

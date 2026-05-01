@@ -82,10 +82,11 @@ async function handleApproveAction({ ticketId, pcTag, approvedBy }) {
     console.log(`[APPROVE][${requestId}] Success: LAPS password received`);
 
     const articleBody = [
-      'ZLA automation result',
+      'Zammad LAPS Automation',
       `Approved by: ${approvedBy || 'Unknown Approver'}`,
-      `PC Tag: ${pcTag}`,
-      `LAPS Password: ${password}`
+      " ",
+      'Login: .\\WLapsAdmin',
+      `Password: ${password}`
     ].join('\n');
 
     console.log(`[APPROVE][${requestId}] Step 4/6: sending article to Zammad`);

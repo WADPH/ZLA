@@ -157,6 +157,7 @@ Example body:
 {
   "ticket_id": "#{ticket.id}",
   "customer": "#{ticket.customer.fullname}",
+  "customer_email": "#{ticket.customer.email}",
   "body": "#{article.body}"
 }
 ```

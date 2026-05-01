@@ -43,9 +43,10 @@ class ZlaBot extends ActivityHandler {
         pcTag: payload.pc_tag,
         approvedBy: context.activity.from?.name || 'Unknown Approver'
       });
+      const approvedBy = context.activity.from?.name || 'Unknown Approver';
 
       if (result.success) {
-        await context.sendActivity('Request processed successfully. Ticket was updated and closed.');
+        await context.sendActivity(`Request processed successfully by ${approvedBy}. Ticket was updated and closed.`);
       } else {
         await context.sendActivity(`Processing failed: ${result.error}`);
       }

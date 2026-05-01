@@ -37,6 +37,23 @@ async function findManagedDeviceByTag(accessToken, pcTag) {
   return response.data.value?.[0] || null;
 }
 
+async function getManagedDevicePrimaryUserEmail(accessToken, managedDeviceId) {
+  const url = `${GRAPH_BASE_URL}/deviceManagement/managedDevices/${managedDeviceId}/users`;
+  const response = await axios.get(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: {
+      '$select': 'id,mail,userPrincipalName'
+    }
+  });
+
+  const firstUser = response.data?.value?.[0];
+  if (!firstUser) {
+    return null;
+  }
+
+  return (firstUser.mail || firstUser.userPrincipalName || '').toLowerCase() || null;
+}
+
 async function getLapsPassword(accessToken, deviceLocalCredentialId, pcTag) {
   const headers = { Authorization: `Bearer ${accessToken}` };
 
@@ -86,5 +103,6 @@ async function getLapsPassword(accessToken, deviceLocalCredentialId, pcTag) {
 module.exports = {
   getGraphAccessToken,
   findManagedDeviceByTag,
+  getManagedDevicePrimaryUserEmail,
   getLapsPassword
 };
