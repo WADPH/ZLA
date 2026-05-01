@@ -157,6 +157,15 @@ https://<YOUR_PUBLIC_HOST>/api/messages
 
 4. Put Bot App ID and Password into `.env` (the same credentials are used for Bot Framework and Graph API calls).
 5. Set correct Teams conversation values (`TEAMS_SERVICE_URL`, `TEAMS_CONVERSATION_ID`) for proactive card delivery.
+6. Bot application needs these API permissions:
+
+```txt
+DeviceLocalCredential.Read.All
+DeviceManagementManagedDevices.PrivilegedOperations.All
+DeviceManagementManagedDevices.Read.All
+```
+
+7. Don't forget that you need 1 application with provided api permissions for each tenant you using.
 
 ## Zammad Webhook Example
 
