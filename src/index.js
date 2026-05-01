@@ -8,6 +8,14 @@ const approveRouter = require('./routes/approve');
 const app = express();
 const port = process.env.PORT || 3000;
 
+process.on('unhandledRejection', (reason) => {
+  console.error('[FATAL] Unhandled promise rejection:', reason);
+});
+
+process.on('uncaughtException', (error) => {
+  console.error('[FATAL] Uncaught exception:', error);
+});
+
 app.use(express.json());
 
 app.get('/health', (_req, res) => {
@@ -15,10 +23,17 @@ app.get('/health', (_req, res) => {
 });
 
 app.post('/api/messages', (req, res) => {
-  adapter.process(req, res, async (context) => {
-    const bot = require('./bot').bot;
-    await bot.run(context);
-  });
+  adapter
+    .process(req, res, async (context) => {
+      const bot = require('./bot').bot;
+      await bot.run(context);
+    })
+    .catch((error) => {
+      console.error('[ERROR] /api/messages processing failed:', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Bot processing failed' });
+      }
+    });
 });
 
 app.use('/api/zammad', zammadRouter);

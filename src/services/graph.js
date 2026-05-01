@@ -37,18 +37,50 @@ async function findManagedDeviceByTag(accessToken, pcTag) {
   return response.data.value?.[0] || null;
 }
 
-async function getLapsPassword(accessToken, managedDeviceId) {
-  const url = `${GRAPH_BASE_URL}/deviceManagement/managedDevices/${managedDeviceId}/getLapsPassword`;
+async function getLapsPassword(accessToken, deviceLocalCredentialId, pcTag) {
+  const headers = { Authorization: `Bearer ${accessToken}` };
 
-  const response = await axios.post(
-    url,
-    {},
-    {
-      headers: { Authorization: `Bearer ${accessToken}` }
+  // 1) Try direct lookup by ID first.
+  try {
+    const byIdUrl = `${GRAPH_BASE_URL}/directory/deviceLocalCredentials/${deviceLocalCredentialId}`;
+    const byIdResponse = await axios.get(byIdUrl, {
+      headers,
+      params: { '$select': 'id,deviceName,credentials' }
+    });
+    return byIdResponse.data;
+  } catch (error) {
+    const status = error.response?.status;
+    const code = error.response?.data?.error?.code;
+
+    // Some tenants return 400 invalid_request instead of 404 when device id is not valid for this endpoint.
+    const shouldFallback = status === 404 || (status === 400 && code === 'invalid_request');
+    if (!shouldFallback) {
+      throw error;
     }
-  );
+  }
 
-  return response.data;
+  // 2) Fallback: resolve by deviceName.
+  const listUrl = `${GRAPH_BASE_URL}/directory/deviceLocalCredentials`;
+  const listResponse = await axios.get(listUrl, {
+    headers,
+    params: {
+      '$filter': `deviceName eq '${pcTag}'`,
+      '$select': 'id,deviceName'
+    }
+  });
+
+  const credentialInfo = listResponse.data?.value?.[0];
+  if (!credentialInfo?.id) {
+    throw new Error(`No deviceLocalCredentials entry found for deviceName ${pcTag}`);
+  }
+
+  const fullUrl = `${GRAPH_BASE_URL}/directory/deviceLocalCredentials/${credentialInfo.id}`;
+  const fullResponse = await axios.get(fullUrl, {
+    headers,
+    params: { '$select': 'id,deviceName,credentials' }
+  });
+
+  return fullResponse.data;
 }
 
 module.exports = {

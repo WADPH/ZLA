@@ -181,4 +181,5 @@ Terminal logs include:
 - Find device:
   - `GET /deviceManagement/managedDevices?$filter=deviceName eq '{pc_tag}'`
 - Get LAPS:
-  - `POST /deviceManagement/managedDevices/{id}/getLapsPassword`
+  - `GET /directory/deviceLocalCredentials/{id}?$select=id,deviceName,credentials`
+  - Fallback by name: `GET /directory/deviceLocalCredentials?$filter=deviceName eq '{pc_tag}'`
