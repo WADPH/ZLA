@@ -166,6 +166,7 @@ https://<YOUR_PUBLIC_HOST>/api/messages
 DeviceLocalCredential.Read.All
 DeviceManagementManagedDevices.PrivilegedOperations.All
 DeviceManagementManagedDevices.Read.All
+User.Read.All
 ```
 
 7. Don't forget that you need 1 application with provided api permissions for each tenant you using.

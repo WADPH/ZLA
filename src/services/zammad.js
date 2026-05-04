@@ -48,9 +48,82 @@ async function getUserById(userId) {
   return response.data;
 }
 
+async function findUserByEmail(email) {
+  const client = getClient();
+  const normalizedEmail = String(email || '').trim().toLowerCase();
+  if (!normalizedEmail) {
+    return null;
+  }
+
+  try {
+    const response = await client.get('/api/v1/users/search', {
+      params: { query: normalizedEmail }
+    });
+    const users = Array.isArray(response.data) ? response.data : [];
+    const match = users.find((user) => (user?.email || '').toLowerCase() === normalizedEmail);
+    if (match) {
+      return match;
+    }
+  } catch (_error) {
+    // Continue with fallback endpoint.
+  }
+
+  try {
+    const response = await client.get('/api/v1/users', {
+      params: { query: normalizedEmail }
+    });
+    const users = Array.isArray(response.data) ? response.data : [];
+    return users.find((user) => (user?.email || '').toLowerCase() === normalizedEmail) || null;
+  } catch (_error) {
+    return null;
+  }
+}
+
+async function assignTicketOwner(ticketId, ownerId) {
+  const client = getClient();
+  await client.put(`/api/v1/tickets/${ticketId}`, {
+    owner_id: Number(ownerId)
+  });
+}
+
+async function listGroups() {
+  const client = getClient();
+  const response = await client.get('/api/v1/groups');
+  return Array.isArray(response.data) ? response.data : [];
+}
+
+async function findGroupByName(groupName) {
+  const normalizedTarget = String(groupName || '').trim().toLowerCase();
+  if (!normalizedTarget) {
+    return null;
+  }
+
+  const groups = await listGroups();
+  return groups.find((group) => String(group?.name || '').trim().toLowerCase() === normalizedTarget) || null;
+}
+
+async function assignTicketGroup(ticketId, groupId) {
+  const client = getClient();
+  await client.put(`/api/v1/tickets/${ticketId}`, {
+    group_id: Number(groupId)
+  });
+}
+
+async function assignTicketGroupByName(ticketId, groupName) {
+  const client = getClient();
+  await client.put(`/api/v1/tickets/${ticketId}`, {
+    group: groupName
+  });
+}
+
 module.exports = {
   createTicketArticle,
   closeTicket,
   getTicketById,
-  getUserById
+  getUserById,
+  findUserByEmail,
+  assignTicketOwner,
+  findGroupByName,
+  assignTicketGroup,
+  assignTicketGroupByName
 };

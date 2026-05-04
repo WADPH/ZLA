@@ -108,6 +108,22 @@ async function getManagedDevicePrimaryUserEmail(accessToken, managedDeviceId) {
   return (firstUser.mail || firstUser.userPrincipalName || '').toLowerCase() || null;
 }
 
+async function getUserEmailByObjectId(accessToken, userObjectId) {
+  if (!userObjectId) {
+    return null;
+  }
+
+  const url = `${GRAPH_BASE_URL}/users/${userObjectId}`;
+  const response = await axios.get(url, {
+    headers: { Authorization: `Bearer ${accessToken}` },
+    params: {
+      '$select': 'id,mail,userPrincipalName'
+    }
+  });
+
+  return (response.data?.mail || response.data?.userPrincipalName || '').toLowerCase() || null;
+}
+
 async function getLapsPassword(accessToken, deviceLocalCredentialId, pcTag) {
   const headers = { Authorization: `Bearer ${accessToken}` };
 
@@ -161,5 +177,6 @@ module.exports = {
   findManagedDeviceByTag,
   findManagedDeviceAcrossTenants,
   getManagedDevicePrimaryUserEmail,
+  getUserEmailByObjectId,
   getLapsPassword
 };

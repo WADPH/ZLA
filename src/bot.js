@@ -1,6 +1,7 @@
 const { BotFrameworkAdapter, ActivityHandler, CardFactory } = require('botbuilder');
 const { handleApproveAction } = require('./routes/approve');
 const { requireEnv } = require('./utils/auth');
+const { getGraphAccessToken, getUserEmailByObjectId } = require('./services/graph');
 
 const adapter = new BotFrameworkAdapter({
   appId: process.env.MICROSOFT_APP_ID,
@@ -37,13 +38,28 @@ class ZlaBot extends ActivityHandler {
 
       console.log(`[BOT] Approve received for ticket=${payload.ticket_id}, pc_tag=${payload.pc_tag}`);
       await context.sendActivity('Approval received. Processing request...');
+      const approvedBy = context.activity.from?.name || 'Unknown Approver';
+      let approvedByEmailFromChannel = context.activity.from?.email || context.activity.from?.userPrincipalName || null;
+      const approverObjectId = context.activity.from?.aadObjectId || null;
+
+      if (!approvedByEmailFromChannel && approverObjectId) {
+        try {
+          const accessToken = await getGraphAccessToken('DEFAULT');
+          approvedByEmailFromChannel = await getUserEmailByObjectId(accessToken, approverObjectId);
+          console.log(
+            `[BOT] Approver email resolved via Graph: ${approvedByEmailFromChannel || 'n/a'} (aadObjectId=${approverObjectId})`
+          );
+        } catch (emailResolveError) {
+          console.error(`[BOT] Failed to resolve approver email from Graph: ${emailResolveError.message}`);
+        }
+      }
 
       const result = await handleApproveAction({
         ticketId: payload.ticket_id,
         pcTag: payload.pc_tag,
-        approvedBy: context.activity.from?.name || 'Unknown Approver'
+        approvedBy,
+        approvedByEmail: approvedByEmailFromChannel || approvedBy
       });
-      const approvedBy = context.activity.from?.name || 'Unknown Approver';
 
       if (result.success) {
         await context.sendActivity(`Request processed successfully by ${approvedBy}. Ticket was updated and closed.`);

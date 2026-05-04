@@ -1,7 +1,15 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { findManagedDeviceAcrossTenants, getLapsPassword } = require('../services/graph');
-const { createTicketArticle, closeTicket } = require('../services/zammad');
+const {
+  createTicketArticle,
+  closeTicket,
+  findUserByEmail,
+  assignTicketOwner,
+  findGroupByName,
+  assignTicketGroup,
+  assignTicketGroupByName
+} = require('../services/zammad');
 
 const router = express.Router();
 
@@ -36,11 +44,42 @@ function extractLapsPassword(lapsResponse) {
   return lapsResponse?.value?.password || lapsResponse?.password || null;
 }
 
-async function handleApproveAction({ ticketId, pcTag, approvedBy }) {
+function normalizeEmail(value) {
+  const text = String(value || '').trim().toLowerCase();
+  if (!text.includes('@')) {
+    return null;
+  }
+  return text;
+}
+
+function buildGroupNameFromEmail(email) {
+  const normalized = normalizeEmail(email);
+  if (!normalized) {
+    return null;
+  }
+
+  const localPart = normalized.split('@')[0];
+  if (!localPart) {
+    return null;
+  }
+
+  const words = localPart
+    .replace(/[_-]+/g, '.')
+    .split('.')
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1));
+
+  return words.length ? words.join(' ') : null;
+}
+
+async function handleApproveAction({ ticketId, pcTag, approvedBy, approvedByEmail }) {
   const requestId = uuidv4();
 
   try {
-    console.log(`[APPROVE][${requestId}] Start: ticket=${ticketId}, pc_tag=${pcTag}, approved_by=${approvedBy}`);
+    console.log(
+      `[APPROVE][${requestId}] Start: ticket=${ticketId}, pc_tag=${pcTag}, approved_by=${approvedBy}, approved_by_email=${approvedByEmail || 'n/a'}`
+    );
 
     if (!ticketId || !pcTag) {
       throw new Error('ticketId or pcTag is missing');
@@ -98,7 +137,86 @@ async function handleApproveAction({ ticketId, pcTag, approvedBy }) {
     await createTicketArticle(ticketId, articleBody, false);
     console.log(`[APPROVE][${requestId}] Success: article created in Zammad`);
 
-    console.log(`[APPROVE][${requestId}] Step 5/6: closing Zammad ticket`);
+    console.log(`[APPROVE][${requestId}] Step 5/6: assigning ticket owner in Zammad (best effort)`);
+    const normalizedApprovedByEmail = normalizeEmail(approvedByEmail || approvedBy);
+    if (!normalizedApprovedByEmail) {
+      console.log(`[APPROVE][${requestId}] Skip owner assignment: approver email not available`);
+    } else {
+      try {
+        console.log(`[APPROVE][${requestId}] Owner assignment lookup email=${normalizedApprovedByEmail}`);
+        const zammadUser = await findUserByEmail(normalizedApprovedByEmail);
+        if (!zammadUser?.id) {
+          console.warn(
+            `[APPROVE][${requestId}] Owner assignment skipped: user with email ${normalizedApprovedByEmail} not found in Zammad`
+          );
+        } else {
+          await assignTicketOwner(ticketId, zammadUser.id);
+          console.log(`[APPROVE][${requestId}] Success: owner assigned to user_id=${zammadUser.id}`);
+        }
+      } catch (assignError) {
+        console.error(`[APPROVE][${requestId}] Owner assignment failed: ${assignError.message}`);
+      }
+    }
+
+    console.log(`[APPROVE][${requestId}] Step 6/7: assigning ticket group in Zammad (best effort)`);
+    if (!normalizedApprovedByEmail) {
+      console.log(`[APPROVE][${requestId}] Skip group assignment: approver email not available`);
+    } else {
+      const expectedGroupName = buildGroupNameFromEmail(normalizedApprovedByEmail);
+      if (!expectedGroupName) {
+        console.log(`[APPROVE][${requestId}] Skip group assignment: failed to derive group name from email`);
+      } else {
+        try {
+          console.log(`[APPROVE][${requestId}] Group assignment lookup name="${expectedGroupName}"`);
+          const group = await findGroupByName(expectedGroupName);
+          if (!group?.id) {
+            console.warn(`[APPROVE][${requestId}] Group assignment skipped: group "${expectedGroupName}" not found`);
+          } else {
+            try {
+              await assignTicketGroup(ticketId, group.id);
+              console.log(`[APPROVE][${requestId}] Success: group assigned to group_id=${group.id} (${group.name})`);
+            } catch (groupIdAssignError) {
+              console.error(
+                `[APPROVE][${requestId}] Group assignment by id failed: ${groupIdAssignError.message}`
+              );
+              if (groupIdAssignError.response?.status) {
+                console.error(
+                  `[APPROVE][${requestId}] Group assignment by id HTTP status: ${groupIdAssignError.response.status}`
+                );
+              }
+              if (groupIdAssignError.response?.data) {
+                console.error(`[APPROVE][${requestId}] Group assignment by id payload:`);
+                console.error(JSON.stringify(groupIdAssignError.response.data, null, 2));
+              }
+
+              try {
+                await assignTicketGroupByName(ticketId, group.name);
+                console.log(
+                  `[APPROVE][${requestId}] Success: group assigned by name fallback (${group.name})`
+                );
+              } catch (groupNameAssignError) {
+                console.error(
+                  `[APPROVE][${requestId}] Group assignment by name fallback failed: ${groupNameAssignError.message}`
+                );
+                if (groupNameAssignError.response?.status) {
+                  console.error(
+                    `[APPROVE][${requestId}] Group assignment by name HTTP status: ${groupNameAssignError.response.status}`
+                  );
+                }
+                if (groupNameAssignError.response?.data) {
+                  console.error(`[APPROVE][${requestId}] Group assignment by name payload:`);
+                  console.error(JSON.stringify(groupNameAssignError.response.data, null, 2));
+                }
+              }
+            }
+          }
+        } catch (groupAssignError) {
+          console.error(`[APPROVE][${requestId}] Group assignment failed: ${groupAssignError.message}`);
+        }
+      }
+    }
+
+    console.log(`[APPROVE][${requestId}] Step 7/7: closing Zammad ticket`);
     await closeTicket(ticketId);
     console.log(`[APPROVE][${requestId}] Success: ticket closed`);
 
@@ -131,12 +249,18 @@ async function handleApproveAction({ ticketId, pcTag, approvedBy }) {
 }
 
 router.post('/', async (req, res) => {
-  const { ticket_id: ticketId, pc_tag: pcTag, approved_by: approvedBy } = req.body || {};
+  const {
+    ticket_id: ticketId,
+    pc_tag: pcTag,
+    approved_by: approvedBy,
+    approved_by_email: approvedByEmail
+  } = req.body || {};
 
   const result = await handleApproveAction({
     ticketId,
     pcTag,
-    approvedBy: approvedBy || 'Manual API Trigger'
+    approvedBy: approvedBy || 'Manual API Trigger',
+    approvedByEmail: approvedByEmail || null
   });
 
   if (!result.success) {
