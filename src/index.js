@@ -16,7 +16,13 @@ process.on('uncaughtException', (error) => {
   console.error('[FATAL] Uncaught exception:', error);
 });
 
-app.use(express.json());
+app.use(
+  express.json({
+    verify: (req, _res, buf) => {
+      req.rawBody = buf;
+    }
+  })
+);
 
 app.get('/health', (_req, res) => {
   res.json({ status: 'ok' });

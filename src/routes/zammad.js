@@ -1,6 +1,6 @@
 const express = require('express');
 const { sendApprovalCard, sendMissingTagCard } = require('../services/teams');
-const { extractPcTag } = require('../utils/auth');
+const { extractPcTag, verifyZammadWebhookSignature } = require('../utils/auth');
 const { findManagedDeviceAcrossTenants } = require('../services/graph');
 const { getTicketById, getUserById } = require('../services/zammad');
 
@@ -18,6 +18,18 @@ router.post('/', async (req, res) => {
 
   try {
     console.log(`[ZAMMAD] Incoming webhook for ticket=${ticketId}`);
+
+    const hmacSecret = process.env.ZAMMAD_WEBHOOK_SECRET || '';
+    if (hmacSecret) {
+      const sigCheck = verifyZammadWebhookSignature(req, hmacSecret);
+      if (!sigCheck.ok) {
+        console.warn(`[ZAMMAD] Webhook signature validation failed: ${sigCheck.reason}`);
+        return res.status(401).json({ error: 'Invalid webhook signature' });
+      }
+      console.log('[ZAMMAD] Webhook signature validated');
+    } else {
+      console.warn('[ZAMMAD] ZAMMAD_WEBHOOK_SECRET is not set: signature validation is disabled');
+    }
 
     const extractedPcTag = extractPcTag(body);
     const pcTag = (providedPcTag || extractedPcTag || '').toUpperCase() || null;

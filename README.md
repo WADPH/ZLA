@@ -63,10 +63,12 @@ THIRD_TENANT_ID=
 # Zammad
 ZAMMAD_URL=
 ZAMMAD_TOKEN=
+ZAMMAD_WEBHOOK_SECRET=
 
 # Teams
 TEAMS_SERVICE_URL=
 TEAMS_CONVERSATION_ID=
+APPROVE_API_TOKEN=
 
 # App
 PORT=3000
@@ -119,6 +121,7 @@ Notes:
 - Service first uses `pc_tag` field from webhook payload.
 - If `pc_tag` is empty, service tries to extract from `body` using regex: `PC-\d{5}`.
 - If tag is still missing, service sends a Teams notification card about a new LAR request without PC tag and includes Open Ticket link.
+- If `ZAMMAD_WEBHOOK_SECRET` is set, webhook signature is verified from `x-hub-signature` (HMAC-SHA1).
 - Example text supported:
 
 ```txt
@@ -146,6 +149,12 @@ Payload:
   "pc_tag": "PC-00036",
   "approved_by": "Admin User"
 }
+```
+
+If `APPROVE_API_TOKEN` is set, send:
+
+```txt
+Authorization: Bearer <APPROVE_API_TOKEN>
 ```
 
 ## Bot Registration (Microsoft)

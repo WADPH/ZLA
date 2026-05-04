@@ -1,9 +1,11 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const { findManagedDeviceAcrossTenants, getLapsPassword } = require('../services/graph');
+const { isBearerAuthorized } = require('../utils/auth');
 const {
   createTicketArticle,
   closeTicket,
+  getTicketById,
   findUserByEmail,
   assignTicketOwner,
   findGroupByName,
@@ -12,6 +14,20 @@ const {
 } = require('../services/zammad');
 
 const router = express.Router();
+
+router.use((req, res, next) => {
+  const expectedToken = process.env.APPROVE_API_TOKEN || '';
+  if (!expectedToken) {
+    console.warn('[APPROVE] APPROVE_API_TOKEN is not set: /api/approve token protection is disabled');
+    return next();
+  }
+
+  if (!isBearerAuthorized(req, expectedToken)) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
+
+  return next();
+});
 
 function decodeBase64IfNeeded(value) {
   if (!value || typeof value !== 'string') {
@@ -73,6 +89,26 @@ function buildGroupNameFromEmail(email) {
   return words.length ? words.join(' ') : null;
 }
 
+function isTicketStateClosed(ticket) {
+  const stateText = String(ticket?.state || '').toLowerCase();
+  return stateText.includes('closed');
+}
+
+function isLarTicket(ticket) {
+  const haystack = [
+    ticket?.title,
+    ticket?.type,
+    ticket?.create_article_type,
+    ticket?.note
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  const markers = ['local admin rights', 'lar', 'admin privilege'];
+  return markers.some((marker) => haystack.includes(marker));
+}
+
 async function handleApproveAction({ ticketId, pcTag, approvedBy, approvedByEmail }) {
   const requestId = uuidv4();
 
@@ -84,6 +120,19 @@ async function handleApproveAction({ ticketId, pcTag, approvedBy, approvedByEmai
     if (!ticketId || !pcTag) {
       throw new Error('ticketId or pcTag is missing');
     }
+
+    console.log(`[APPROVE][${requestId}] Step 0/7: validating ticket in Zammad`);
+    const ticket = await getTicketById(ticketId, true);
+    if (!ticket) {
+      throw new Error(`Ticket ${ticketId} not found in Zammad`);
+    }
+    if (isTicketStateClosed(ticket)) {
+      throw new Error(`Ticket ${ticketId} is already closed`);
+    }
+    if (!isLarTicket(ticket)) {
+      throw new Error(`Ticket ${ticketId} is not a LAR/Admin Privilege request`);
+    }
+    console.log(`[APPROVE][${requestId}] Success: ticket validation passed`);
 
     console.log(`[APPROVE][${requestId}] Step 1/6: scanning configured tenants for device ${pcTag}`);
     const match = await findManagedDeviceAcrossTenants(pcTag);
