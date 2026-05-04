@@ -1,5 +1,5 @@
 const express = require('express');
-const { sendApprovalCard } = require('../services/teams');
+const { sendApprovalCard, sendMissingTagCard } = require('../services/teams');
 const { extractPcTag } = require('../utils/auth');
 const { findManagedDeviceAcrossTenants } = require('../services/graph');
 const { getTicketById, getUserById } = require('../services/zammad');
@@ -7,7 +7,14 @@ const { getTicketById, getUserById } = require('../services/zammad');
 const router = express.Router();
 
 router.post('/', async (req, res) => {
-  const { ticket_id: ticketId, customer, customer_email: customerEmailRaw, body, pc_tag: providedPcTag } = req.body || {};
+  const {
+    ticket_id: ticketId,
+    customer,
+    customer_email: customerEmailRaw,
+    body,
+    lar_reason: larReason,
+    pc_tag: providedPcTag
+  } = req.body || {};
 
   try {
     console.log(`[ZAMMAD] Incoming webhook for ticket=${ticketId}`);
@@ -27,14 +34,9 @@ router.post('/', async (req, res) => {
       return res.status(400).json({ error: 'ticket_id is required' });
     }
 
-    if (!pcTag) {
-      return res.status(400).json({ error: 'pc_tag was not provided and could not be extracted from body' });
-    }
-
     let customerEmail = (customerEmailRaw || '').trim().toLowerCase() || null;
     let primaryUserEmail = null;
     let mismatchWarning = null;
-    let matchedTenantKey = null;
 
     console.log(`[ZAMMAD] Compare step: customer email from webhook=${customerEmail || 'n/a'}`);
 
@@ -55,21 +57,24 @@ router.post('/', async (req, res) => {
       }
     }
 
-    try {
-      console.log(`[ZAMMAD] Tenant scan: searching device ${pcTag} across configured tenants`);
-      const match = await findManagedDeviceAcrossTenants(pcTag);
-      if (!match) {
-        throw new Error(`Device ${pcTag} not found in any configured tenant`);
+    if (pcTag) {
+      try {
+        console.log(`[ZAMMAD] Tenant scan: searching device ${pcTag} across configured tenants`);
+        const match = await findManagedDeviceAcrossTenants(pcTag);
+        if (!match) {
+          throw new Error(`Device ${pcTag} not found in any configured tenant`);
+        }
+
+        const managedDevice = match.device;
+        console.log(`[ZAMMAD] Tenant scan result: matched tenant=${match.tenantKey}, device_id=${managedDevice.id}`);
+
+        primaryUserEmail = (managedDevice.userPrincipalName || managedDevice.emailAddress || '').trim().toLowerCase() || null;
+        console.log(`[ZAMMAD] Compare step: primary user email from Graph=${primaryUserEmail || 'n/a'}`);
+      } catch (compareError) {
+        console.error(`[ZAMMAD] Compare step failed: ${compareError.message}`);
       }
-
-      matchedTenantKey = match.tenantKey;
-      const managedDevice = match.device;
-      console.log(`[ZAMMAD] Tenant scan result: matched tenant=${matchedTenantKey}, device_id=${managedDevice.id}`);
-
-      primaryUserEmail = (managedDevice.userPrincipalName || managedDevice.emailAddress || '').trim().toLowerCase() || null;
-      console.log(`[ZAMMAD] Compare step: primary user email from Graph=${primaryUserEmail || 'n/a'}`);
-    } catch (compareError) {
-      console.error(`[ZAMMAD] Compare step failed: ${compareError.message}`);
+    } else {
+      console.warn('[ZAMMAD] PC tag missing: skip tenant scan and send missing-tag notification card');
     }
 
     if (customerEmail && primaryUserEmail && customerEmail !== primaryUserEmail) {
@@ -81,17 +86,29 @@ router.post('/', async (req, res) => {
       }`
     );
 
-    await sendApprovalCard({
+    if (pcTag) {
+      await sendApprovalCard({
+        ticketId,
+        customer,
+        customerEmail,
+        body,
+        larReason,
+        pcTag,
+        mismatchWarning
+      });
+      console.log(`[ZAMMAD] Success: approval card sent for ticket=${ticketId}`);
+      return res.json({ success: true, ticket_id: ticketId, pc_tag: pcTag, mode: 'approval-card' });
+    }
+
+    await sendMissingTagCard({
       ticketId,
       customer,
       customerEmail,
-      reason: body,
-      pcTag,
-      mismatchWarning
+      body,
+      larReason
     });
-
-    console.log(`[ZAMMAD] Success: approval card sent for ticket=${ticketId}`);
-    return res.json({ success: true, ticket_id: ticketId, pc_tag: pcTag });
+    console.log(`[ZAMMAD] Success: missing-tag notification card sent for ticket=${ticketId}`);
+    return res.json({ success: true, ticket_id: ticketId, pc_tag: null, mode: 'missing-tag-card' });
   } catch (error) {
     console.error(`[ZAMMAD] Failed to process webhook: ${error.message}`);
     return res.status(500).json({ success: false, error: error.message });

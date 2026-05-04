@@ -108,14 +108,17 @@ Payload:
 {
   "ticket_id": 123,
   "customer": "John Doe",
+  "lar_reason": "VS Code re-installation",
   "body": "Need admin access",
-  "pc_tag": "PC-001"
+  "pc_tag": "PC-00036"
 }
 ```
 
 Notes:
 
-- If `pc_tag` is missing, service tries to extract from body using regex: `PC-\d{5}`
+- Service first uses `pc_tag` field from webhook payload.
+- If `pc_tag` is empty, service tries to extract from `body` using regex: `PC-\d{5}`.
+- If tag is still missing, service sends a Teams notification card about a new LAR request without PC tag and includes Open Ticket link.
 - Example text supported:
 
 ```txt
@@ -182,6 +185,8 @@ Example body:
   "ticket_id": "#{ticket.id}",
   "customer": "#{ticket.customer.fullname}",
   "customer_email": "#{ticket.customer.email}",
+  "lar_reason": "#{ticket.lar_reason}",
+  "pc_tag": "#{ticket.pc_tag}",
   "body": "#{article.body}"
 }
 ```
